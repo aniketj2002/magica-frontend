@@ -29,7 +29,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      localization={{
+        signIn: {
+          start: {
+            title: "Sign in to Magica",
+            subtitle: "to continue to Magica",
+          },
+        },
+        signUp: {
+          start: {
+            title: "Sign up for Magica",
+            subtitle: "to continue to Magica",
+          },
+        },
+      }}
+    >
       <html lang="en" className={`${inter.variable} font-sans h-full antialiased`}>
         <body className="h-dvh max-h-dvh overflow-hidden flex flex-col bg-background text-foreground font-sans">
           <TooltipProvider>
