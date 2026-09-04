@@ -27,10 +27,11 @@ import { PanelLeftIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
+const SIDEBAR_WIDTH = "16.5rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+const SIDEBAR_COLLAPSE_BREAKPOINT = 1080
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -88,6 +89,46 @@ function SidebarProvider({
     [setOpenProp, open]
   )
 
+  const lastBucketRef = React.useRef<"mobile" | "collapsed" | "expanded" | null>(null)
+
+  // Responsive auto-collapse:
+  // - width >= 1080px: expanded format
+  // - 768px <= width < 1080px: auto-collapse to icon format
+  // - width < 768px: hidden from desktop flow (isMobile handles mobile sheet)
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const handleCheck = () => {
+      const width = window.innerWidth
+      const currentBucket: "mobile" | "collapsed" | "expanded" =
+        width < 768
+          ? "mobile"
+          : width < SIDEBAR_COLLAPSE_BREAKPOINT
+          ? "collapsed"
+          : "expanded"
+
+      if (lastBucketRef.current !== currentBucket) {
+        lastBucketRef.current = currentBucket
+        if (currentBucket === "collapsed") {
+          _setOpen(false)
+        } else if (currentBucket === "expanded") {
+          _setOpen(true)
+        }
+      }
+    }
+
+    handleCheck()
+
+    window.addEventListener("resize", handleCheck)
+    const mqlCollapse = window.matchMedia(`(max-width: ${SIDEBAR_COLLAPSE_BREAKPOINT - 1}px)`)
+    mqlCollapse.addEventListener?.("change", handleCheck)
+
+    return () => {
+      window.removeEventListener("resize", handleCheck)
+      mqlCollapse.removeEventListener?.("change", handleCheck)
+    }
+  }, [_setOpen])
+
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
@@ -138,7 +179,7 @@ function SidebarProvider({
           } as React.CSSProperties
         }
         className={cn(
-          "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+          "group/sidebar-wrapper flex h-full max-h-full w-full overflow-hidden has-data-[variant=inset]:bg-sidebar",
           className
         )}
         {...props}
@@ -221,9 +262,7 @@ function Sidebar({
           "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
-          variant === "floating" || variant === "inset"
-            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
+          "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
         )}
       />
       <div
@@ -231,10 +270,10 @@ function Sidebar({
         data-side={side}
         className={cn(
           "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
-          // Adjust the padding for floating and inset variants.
+          "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
           variant === "floating" || variant === "inset"
-            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            ? "py-2 pr-2 pl-1.5 group-data-[collapsible=icon]:py-2 group-data-[collapsible=icon]:px-1.5"
+            : "group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className
         )}
         {...props}
@@ -242,7 +281,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          className="flex size-full flex-col bg-sidebar overflow-hidden group-data-[variant=floating]:rounded-[24px] group-data-[variant=floating]:shadow-none"
         >
           {children}
         </div>
