@@ -1,21 +1,105 @@
-import { Message } from "./Message";
+"use client";
+
+import { useRef, useEffect } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Message } from "./Message";
+import type { ContentBlock, Message as ApiMessage } from "@/lib/api/types";
 
-const dummyMessages = [
-  { id: "1", role: "user" as const, content: "Hello Magica, can you help me build a website clone?" },
-  { id: "2", role: "assistant" as const, content: "Of course! I can help you with that. What specific features are you looking to clone?" },
-  { id: "3", role: "user" as const, content: "I need the sidebar, authentication, and the main chat UI built with React and Tailwind CSS." },
-  { id: "4", role: "assistant" as const, content: "Great choices! We can use Next.js App Router, Tailwind CSS for styling, Shadcn/ui for components, and Clerk for authentication. I'll provide you with the structure and code." },
-];
+export type StreamingBuffer = {
+  content: ContentBlock[];
+  active: boolean;
+} | null;
 
-export function MessageList() {
+function roleForUi(
+  role: ApiMessage["role"],
+): "user" | "assistant" | "system" | "tool" {
+  switch (role) {
+    case "USER":
+      return "user";
+    case "ASSISTANT":
+      return "assistant";
+    case "SYSTEM":
+      return "system";
+    case "TOOL":
+      return "tool";
+  }
+}
+
+export function MessageList({
+  messages,
+  streaming,
+  hasOlder,
+  isLoadingOlder,
+  onLoadOlder,
+  errorCodeByRunId,
+  streamingErrorCode,
+}: {
+  messages: ApiMessage[];
+  streaming?: StreamingBuffer;
+  hasOlder?: boolean;
+  isLoadingOlder?: boolean;
+  onLoadOlder?: () => void;
+  errorCodeByRunId?: Record<string, string | null | undefined>;
+  streamingErrorCode?: string | null;
+}) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const showStreaming =
+    streaming?.active &&
+    // Avoid duplicating a STREAMING assistant already in the list once checkpointed.
+    !messages.some((m) => m.role === "ASSISTANT" && m.status === "STREAMING");
+
+  // Auto-scroll to bottom when new messages arrive or streaming updates
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length, streaming?.content.length]);
+
   return (
-    <ScrollArea className="flex-1 p-4">
-      <div className="mx-auto max-w-3xl space-y-8 pt-4 pb-8">
-        {dummyMessages.map((message) => (
-          <Message key={message.id} role={message.role} content={message.content} />
+    <ScrollArea className="min-h-0 flex-1 overflow-hidden p-4">
+      <div className="mx-auto max-w-3xl space-y-6 pt-4 pb-8">
+        {hasOlder && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={onLoadOlder}
+              disabled={isLoadingOlder}
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+            >
+              {isLoadingOlder ? "Loading…" : "Load older messages"}
+            </button>
+          </div>
+        )}
+
+        {messages.map((message) => (
+          <Message
+            key={message.id}
+            role={roleForUi(message.role)}
+            content={Array.isArray(message.content) ? message.content : []}
+            status={message.status}
+            streaming={message.status === "STREAMING"}
+            createdAt={message.createdAt}
+            errorCode={
+              message.agentRunId
+                ? (errorCodeByRunId?.[message.agentRunId] ?? null)
+                : null
+            }
+          />
         ))}
+
+        {showStreaming && (
+          <Message
+            role="assistant"
+            content={streaming!.content}
+            status="STREAMING"
+            streaming
+            errorCode={streamingErrorCode}
+          />
+        )}
+
+        {/* Scroll anchor */}
+        <div ref={bottomRef} />
       </div>
     </ScrollArea>
   );
 }
+

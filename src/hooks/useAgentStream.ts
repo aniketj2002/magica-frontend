@@ -1,0 +1,224 @@
+"use client";
+
+import { useEffect, useMemo, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+import type { AgentStreamPart, ContentBlock } from "@/lib/api/types";
+import { creditKeys, messageKeys, runKeys } from "@/hooks/queries";
+import { useActiveRunStore } from "@/store/activeRun";
+
+export type StreamToolCall = {
+  id: string;
+  name: string;
+  argumentsJson: string;
+  ok?: boolean;
+  status?: string;
+  output?: unknown;
+};
+
+export type FoldedStream = {
+  text: string;
+  reasoning: string;
+  toolCalls: StreamToolCall[];
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  } | null;
+  finished: boolean;
+  finishReason: string | null;
+  error: { code: string; message: string } | null;
+  status: string | null;
+  contentBlocks: ContentBlock[];
+};
+
+function foldParts(parts: AgentStreamPart[] | undefined): FoldedStream {
+  const result: FoldedStream = {
+    text: "",
+    reasoning: "",
+    toolCalls: [],
+    usage: null,
+    finished: false,
+    finishReason: null,
+    error: null,
+    status: null,
+    contentBlocks: [],
+  };
+
+  if (!parts?.length) return result;
+
+  const toolById = new Map<string, StreamToolCall>();
+
+  for (const part of parts) {
+    switch (part.type) {
+      case "status":
+        result.status = part.status;
+        break;
+      case "text-delta":
+        result.text += part.text;
+        break;
+      case "reasoning-delta":
+        result.reasoning += part.text;
+        break;
+      case "tool-call": {
+        const existing = toolById.get(part.id);
+        if (existing) {
+          existing.name = part.name;
+          existing.argumentsJson = part.argumentsJson;
+        } else {
+          toolById.set(part.id, {
+            id: part.id,
+            name: part.name,
+            argumentsJson: part.argumentsJson,
+          });
+        }
+        break;
+      }
+      case "tool-progress": {
+        const existing = toolById.get(part.id);
+        if (existing) {
+          existing.status = part.status;
+          if (!existing.name) existing.name = part.name;
+        } else {
+          toolById.set(part.id, {
+            id: part.id,
+            name: part.name,
+            argumentsJson: "",
+            status: part.status,
+          });
+        }
+        break;
+      }
+      case "tool-result": {
+        const existing = toolById.get(part.id);
+        if (existing) {
+          existing.ok = part.ok;
+          existing.output = part.output;
+          if (part.ok) existing.status = "COMPLETED";
+        } else {
+          toolById.set(part.id, {
+            id: part.id,
+            name: part.name,
+            argumentsJson: "",
+            ok: part.ok,
+            output: part.output,
+            status: part.ok ? "COMPLETED" : undefined,
+          });
+        }
+        break;
+      }
+      case "usage":
+        result.usage = {
+          promptTokens: part.promptTokens,
+          completionTokens: part.completionTokens,
+          totalTokens: part.totalTokens,
+        };
+        break;
+      case "finish":
+        result.finished = true;
+        result.finishReason = part.reason;
+        break;
+      case "error":
+        result.error = { code: part.code, message: part.message };
+        result.finished = true;
+        break;
+      default:
+        break;
+    }
+  }
+
+  result.toolCalls = [...toolById.values()];
+
+  const blocks: ContentBlock[] = [];
+  if (result.reasoning) {
+    blocks.push({ type: "thinking", text: result.reasoning });
+  }
+  if (result.text) {
+    blocks.push({ type: "text", text: result.text });
+  }
+  for (const tool of result.toolCalls) {
+    let input: unknown = tool.argumentsJson;
+    try {
+      input = tool.argumentsJson ? JSON.parse(tool.argumentsJson) : {};
+    } catch {
+      input = tool.argumentsJson;
+    }
+    blocks.push({
+      type: "tool_use",
+      id: tool.id,
+      name: tool.name,
+      input,
+      ...(tool.status ? { status: tool.status } : {}),
+    });
+    if (tool.ok !== undefined) {
+      blocks.push({
+        type: "tool_result",
+        toolUseId: tool.id,
+        content: tool.output ?? (tool.ok ? "ok" : "error"),
+        isError: !tool.ok,
+      });
+    }
+  }
+  if (result.usage) {
+    blocks.push({ type: "usage", ...result.usage });
+  }
+  result.contentBlocks = blocks;
+
+  return result;
+}
+
+export function useAgentStream(opts: {
+  chatId: string;
+  triggerRunId: string | undefined;
+  publicAccessToken: string | undefined;
+  agentRunId: string | undefined;
+}) {
+  const { chatId, triggerRunId, publicAccessToken, agentRunId } = opts;
+  const queryClient = useQueryClient();
+  const clearActiveRun = useActiveRunStore((s) => s.clearActiveRun);
+  const invalidatedRef = useRef<string | null>(null);
+
+  const enabled = Boolean(triggerRunId && publicAccessToken);
+
+  const { parts, error } = useRealtimeStream<AgentStreamPart>(
+    triggerRunId ?? "",
+    "agent",
+    {
+      accessToken: publicAccessToken ?? "",
+      timeoutInSeconds: 600,
+      throttleInMs: 50,
+      enabled,
+    },
+  );
+
+  const folded = useMemo(() => foldParts(parts), [parts]);
+
+  useEffect(() => {
+    if (!folded.finished && !folded.error && !error) return;
+    const key = agentRunId ?? triggerRunId ?? null;
+    if (!key || invalidatedRef.current === key) return;
+    invalidatedRef.current = key;
+
+    clearActiveRun(chatId);
+    void queryClient.invalidateQueries({ queryKey: messageKeys.list(chatId) });
+    void queryClient.invalidateQueries({ queryKey: creditKeys.balance });
+    if (agentRunId) {
+      void queryClient.invalidateQueries({ queryKey: runKeys.detail(agentRunId) });
+    }
+  }, [
+    folded.finished,
+    folded.error,
+    error,
+    agentRunId,
+    triggerRunId,
+    chatId,
+    clearActiveRun,
+    queryClient,
+  ]);
+
+  return {
+    ...folded,
+    streamError: error ?? null,
+    isStreaming: enabled && !folded.finished && !folded.error && !error,
+  };
+}

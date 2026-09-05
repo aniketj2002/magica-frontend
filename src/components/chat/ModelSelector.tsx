@@ -2,17 +2,11 @@
 
 import { ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
-
-const models = [
-  { id: "magica-auto", name: "Magica Auto", description: "Automatically picks the best model for your task" },
-  { id: "magica-fast", name: "Magica Fast", description: "Fast reasoning for everyday tasks" },
-  { id: "magica-max", name: "Magica Max", description: "Maximum intelligence for complex tasks" },
-  { id: "magica-pro-max", name: "Magica Pro Max", description: "Most capable model for ambitious projects" },
-];
+import { MODEL_OPTIONS, useModelSelection } from "./ModelContext";
 
 export function ModelSelector() {
   const [isOpen, setIsOpen] = useState(false);
-  const [selected, setSelected] = useState(models[0]);
+  const { selected, setSelectedId } = useModelSelection();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,21 +31,27 @@ export function ModelSelector() {
           className="h-4 w-4 rounded-[4px] shrink-0 dark:invert"
         />
         <span className="font-semibold">{selected.name}</span>
-        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+        />
       </button>
 
       {isOpen && (
         <div className="absolute left-0 top-full z-50 mt-1.5 w-[280px] rounded-2xl border border-border bg-card p-1.5 shadow-xl">
-          {models.map((model) => (
+          {MODEL_OPTIONS.map((model) => (
             <button
               key={model.id}
+              disabled={model.disabled}
               onClick={() => {
-                setSelected(model);
+                if (model.disabled) return;
+                setSelectedId(model.id);
                 setIsOpen(false);
               }}
-              className={`flex w-full items-start gap-3 rounded-xl p-2.5 text-left text-sm transition-colors hover:bg-accent ${
-                selected.id === model.id ? "bg-accent/80" : ""
-              }`}
+              className={`flex w-full items-start gap-3 rounded-xl p-2.5 text-left text-sm transition-colors ${
+                model.disabled
+                  ? "cursor-not-allowed opacity-50"
+                  : "hover:bg-accent cursor-pointer"
+              } ${selected.id === model.id ? "bg-accent/80" : ""}`}
             >
               <img
                 src="/magica_favicon_black.svg"
@@ -59,8 +59,17 @@ export function ModelSelector() {
                 className="h-4 w-4 mt-0.5 rounded-[4px] shrink-0 dark:invert"
               />
               <div className="flex flex-col">
-                <span className="font-medium text-foreground">{model.name}</span>
-                <span className="text-xs text-muted-foreground leading-snug">{model.description}</span>
+                <span className="font-medium text-foreground">
+                  {model.name}
+                  {model.disabled ? (
+                    <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Soon
+                    </span>
+                  ) : null}
+                </span>
+                <span className="text-xs text-muted-foreground leading-snug">
+                  {model.description}
+                </span>
               </div>
             </button>
           ))}

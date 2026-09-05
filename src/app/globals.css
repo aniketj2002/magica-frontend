@@ -147,3 +147,128 @@
 .bg-magica-purple {
   background-color: #7c5cfc;
 }
+
+/* ── Chat message entry animation ── */
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-message-in {
+  animation: message-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Enhanced streaming cursor ── */
+@keyframes cursor-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.streaming-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #7c5cfc 0%, #a78bfa 100%);
+  vertical-align: middle;
+  margin-left: 2px;
+  animation: cursor-pulse 1s ease-in-out infinite;
+}
+
+/* ── User message bubble (reference: light grey pill) ── */
+.message-bubble-user {
+  background-color: #f1f2f4;
+  color: #18181b;
+  border-radius: 22px;
+  padding: 10px 16px;
+  max-width: min(75%, 560px);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.dark .message-bubble-user {
+  background-color: #27272a;
+  color: #ededed;
+}
+
+/* ── Assistant message area ── */
+.message-area-assistant {
+  max-width: 100%;
+  transition: border-color 0.2s ease;
+}
+
+/* ── Thinking block glassmorphism ── */
+.thinking-block {
+  background: rgba(124, 92, 252, 0.04);
+  border: 1px solid rgba(124, 92, 252, 0.12);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.dark .thinking-block {
+  background: rgba(124, 92, 252, 0.08);
+  border-color: rgba(124, 92, 252, 0.2);
+}
+
+.thinking-block:hover {
+  border-color: rgba(124, 92, 252, 0.25);
+}
+
+/* ── Tool use pill ── */
+.tool-pill {
+  background: rgba(124, 92, 252, 0.06);
+  border: 1px solid rgba(124, 92, 252, 0.1);
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.dark .tool-pill {
+  background: rgba(124, 92, 252, 0.1);
+  border-color: rgba(124, 92, 252, 0.18);
+}
+
+.tool-pill:hover {
+  border-color: rgba(124, 92, 252, 0.22);
+}
+
+/* ── Tool card generating shimmer ── */
+.tool-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(124, 92, 252, 0.06) 0%,
+    rgba(124, 92, 252, 0.14) 50%,
+    rgba(124, 92, 252, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  animation: tool-shimmer 1.4s ease-in-out infinite;
+}
+
+.dark .tool-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(124, 92, 252, 0.08) 0%,
+    rgba(124, 92, 252, 0.2) 50%,
+    rgba(124, 92, 252, 0.08) 100%
+  );
+  background-size: 200% 100%;
+}
+
+@keyframes tool-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}

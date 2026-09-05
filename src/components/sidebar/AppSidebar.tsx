@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { UserButton, useUser, SignInButton } from "@clerk/nextjs";
+import { useBalance } from "@/hooks/queries";
 import {
   Plus,
   ClipboardList,
@@ -16,6 +17,7 @@ import {
   MoreVertical,
   Gift,
   Settings,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -29,6 +31,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "./ThemeToggle";
+import { ChatList } from "./ChatList";
+import { SettingsDialog } from "@/components/settings/SettingsDialog";
 
 const navItems = [
   { icon: Plus, label: "New task", href: "/chat" },
@@ -36,17 +40,45 @@ const navItems = [
   { icon: FolderKanban, label: "Projects", href: "/chat/placeholder?page=Projects" },
   { icon: Library, label: "Library", href: "/chat/placeholder?page=Library" },
   { icon: Wrench, label: "Tools", href: "/chat/placeholder?page=Tools" },
-  { icon: Blocks, label: "API / MCP", href: "/chat/placeholder?page=API%20%2F%20MCP" },
+  { icon: Blocks, label: "API / MCP", href: "https://self-01775291.mintlify.app/" },
   { icon: HelpCircle, label: "Help & Support", href: "/chat/placeholder?page=Help%20%26%20Support" },
   { icon: Sparkles, label: "Unfair Advantage", href: "/chat/placeholder?page=Unfair%20Advantage" },
-  { icon: Settings, label: "Settings", href: "/chat/placeholder?page=Settings" },
 ];
+
+function formatCredits(balance: number): string {
+  if (Math.abs(balance) >= 1_000_000) {
+    return `${(balance / 1_000_000).toFixed(2)}M`;
+  }
+  if (Math.abs(balance) >= 1_000) {
+    return `${(balance / 1_000).toFixed(1)}K`;
+  }
+  return balance.toFixed(2);
+}
+
+function CreditBalanceDisplay() {
+  const { data, isLoading } = useBalance();
+
+  return (
+    <Link
+      href="/settings/billing/credit-usage"
+      className="flex items-center justify-between w-full rounded-lg px-2 py-2 hover:bg-accent transition-colors group"
+    >
+      <span className="text-[12.5px] font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+        Available Credits
+      </span>
+      <span className="text-[13px] font-semibold text-foreground tabular-nums">
+        {isLoading ? "—" : formatCredits(data?.balance ?? 0)}
+      </span>
+    </Link>
+  );
+}
 
 export function AppSidebar() {
   const { user } = useUser();
   const { toggleSidebar, state, isMobile } = useSidebar();
   const isCollapsed = !isMobile && state === "collapsed";
   const [showMore, setShowMore] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -114,11 +146,20 @@ export function AppSidebar() {
           )}
           {navItems.map((item) => {
             const requiresAuth = mounted && !user && ["Tasks", "Projects", "Library"].includes(item.label);
+            const isExternal = item.href.startsWith("http://") || item.href.startsWith("https://");
 
             const buttonContent = (
               <SidebarMenuButton
                 tooltip={item.label}
-                render={requiresAuth ? <button type="button" /> : <Link href={item.href} />}
+                render={
+                  requiresAuth ? (
+                    <button type="button" />
+                  ) : isExternal ? (
+                    <a href={item.href} target="_blank" rel="noopener noreferrer" />
+                  ) : (
+                    <Link href={item.href} />
+                  )
+                }
                 className={`flex items-center rounded-lg font-medium text-neutral-700 dark:text-[#a1a1aa] transition-colors hover:bg-accent hover:text-foreground dark:hover:text-white cursor-pointer ${
                   isCollapsed
                     ? "h-9 w-9 justify-center p-0"
@@ -144,11 +185,15 @@ export function AppSidebar() {
           })}
         </SidebarMenu>
 
-        {/* Recent tasks area in sidebar */}
+        {/* Recent chats */}
         {!isCollapsed && (
-          <div className="flex-1 flex items-center justify-center py-8">
-            <span className="text-xs text-muted-foreground/70 select-none">No tasks yet</span>
-          </div>
+          mounted && user ? (
+            <ChatList />
+          ) : (
+            <div className="flex-1 flex items-center justify-center py-8">
+              <span className="text-xs text-muted-foreground/70 select-none">No tasks yet</span>
+            </div>
+          )
         )}
       </SidebarContent>
 
@@ -227,10 +272,35 @@ export function AppSidebar() {
           </button>
         )}
 
-        {/* Collapsible Claim Offer & Theme Selector */}
+        {/* Collapsible items (Credits, Settings, Offers, Theme) */}
         {!isCollapsed ? (
           showMore && (
             <>
+              {/* Available Credits */}
+              {mounted && user && <CreditBalanceDisplay />}
+
+              {/* Settings */}
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className="flex items-center gap-2.5 rounded-full border border-neutral-200 dark:border-neutral-800 bg-background px-3 py-1.5 text-[13.5px] font-medium text-neutral-700 dark:text-[#a1a1aa] hover:bg-neutral-100 dark:hover:bg-neutral-800/60 transition-colors w-full mb-1.5 cursor-pointer"
+              >
+                <Settings className="h-4 w-4 shrink-0 text-neutral-600 dark:text-[#a1a1aa]" />
+                <span>Settings</span>
+              </button>
+
+              {/* Invite Team Members */}
+              <button
+                type="button"
+                className="flex items-center justify-between rounded-full border border-neutral-200 dark:border-neutral-800 bg-background px-3 py-1.5 text-[13.5px] font-medium text-neutral-700 dark:text-[#a1a1aa] hover:bg-neutral-100 dark:hover:bg-neutral-800/60 transition-colors w-full mb-1.5"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Users className="h-4 w-4 shrink-0 text-neutral-600 dark:text-[#a1a1aa]" />
+                  <span>Invite team members</span>
+                </div>
+                <span className="text-neutral-400 dark:text-neutral-500 text-lg leading-none">&rarr;</span>
+              </button>
+
               {/* Claim Offer Pill */}
               <button
                 type="button"
@@ -255,12 +325,16 @@ export function AppSidebar() {
 
         {/* Auth section */}
         {mounted && user ? (
-          <div className={`flex items-center rounded-lg ${isCollapsed ? "justify-center p-0" : "gap-2 px-2 py-1.5"}`}>
-            <UserButton />
-            {!isCollapsed && (
-              <span className="truncate text-sm font-semibold text-foreground">
-                {user.fullName || "User"}
-              </span>
+          <div className={`mt-1 flex w-full items-center ${isCollapsed ? "justify-center" : ""}`}>
+            {isCollapsed ? (
+              <UserButton />
+            ) : (
+              <div className="flex w-full items-center gap-2 rounded-full border border-neutral-200 dark:border-neutral-800 bg-background hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors p-1 pr-3 cursor-pointer">
+                <UserButton appearance={{ elements: { userButtonAvatarBox: "h-7 w-7" } }} />
+                <span className="truncate text-[13.5px] font-medium text-foreground">
+                  {user.fullName || "User"}
+                </span>
+              </div>
             )}
           </div>
         ) : mounted ? (
@@ -273,6 +347,7 @@ export function AppSidebar() {
           </SignInButton>
         ) : null}
       </SidebarFooter>
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </Sidebar>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Providers } from "./providers";
 import "./globals.css";
 
 const inter = Inter({
@@ -47,9 +48,11 @@ export default function RootLayout({
     >
       <html lang="en" className={`${inter.variable} font-sans h-full antialiased`}>
         <body className="h-dvh max-h-dvh overflow-hidden flex flex-col bg-background text-foreground font-sans">
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
+          <Providers>
+            <TooltipProvider>
+              {children}
+            </TooltipProvider>
+          </Providers>
         </body>
       </html>
     </ClerkProvider>

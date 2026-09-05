@@ -1,41 +1,164 @@
 "use client";
 
-import { useState } from "react";
-import { Paperclip, Plug, ArrowUp, Mic, Zap, StopCircle } from "lucide-react";
+import { useRef, useState } from "react";
+import { Paperclip, Plug, ArrowUp, Mic, StopCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AttachmentChip } from "./AttachmentChip";
+import {
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  useAttachmentUpload,
+} from "@/hooks/useAttachmentUpload";
+import { cn } from "@/lib/utils";
 
-export function Composer() {
+export type ComposerProps = {
+  onSend: (text: string, attachmentIds: string[]) => void | Promise<void>;
+  onStop?: () => void;
+  isStreaming?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+  /** Required for uploads in an existing chat. */
+  chatId?: string | null;
+  /** New-chat flow: create a chat lazily before the first upload. */
+  ensureChatId?: () => Promise<string>;
+};
+
+export function Composer({
+  onSend,
+  onStop,
+  isStreaming = false,
+  disabled = false,
+  placeholder = "Send a message...",
+  chatId = null,
+  ensureChatId,
+}: ComposerProps) {
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const {
+    items,
+    addFiles,
+    removeItem,
+    retryItem,
+    reset,
+    isSettling,
+    allReady,
+    readyIds,
+  } = useAttachmentUpload({ chatId, ensureChatId });
+
+  const busy = isStreaming || sending;
+  const canSend =
+    Boolean(input.trim()) &&
+    !busy &&
+    !disabled &&
+    allReady &&
+    !isSettling;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    setIsTyping(true);
+    const text = input.trim();
+    if (!text || busy || disabled || !allReady || isSettling) return;
+    const attachmentIds = [...readyIds];
+    setSending(true);
     setInput("");
+    try {
+      await onSend(text, attachmentIds);
+      reset();
+    } finally {
+      setSending(false);
+    }
+  };
 
-    // Simulate thinking state reset
-    setTimeout(() => {
-      setIsTyping(false);
-    }, 2000);
+  const openFilePicker = () => {
+    if (disabled || busy) return;
+    fileInputRef.current?.click();
+  };
+
+  const onFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    addFiles(files);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
     <div className="mx-auto w-full max-w-[900px] px-4">
       <form
         onSubmit={handleSubmit}
-        className="relative flex w-full flex-col overflow-hidden rounded-3xl border border-neutral-300 dark:border-neutral-700 bg-card shadow-sm transition-all focus-within:shadow-md focus-within:border-neutral-400 dark:focus-within:border-neutral-500"
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dragDepth.current += 1;
+          setDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragging(false);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dragDepth.current = 0;
+          setDragging(false);
+          if (disabled || busy) return;
+          if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+        }}
+        className={cn(
+          "relative flex w-full flex-col overflow-hidden rounded-3xl border border-neutral-300 dark:border-neutral-700 bg-card shadow-sm transition-all focus-within:shadow-md focus-within:border-neutral-400 dark:focus-within:border-neutral-500",
+          dragging && "border-neutral-500 ring-2 ring-neutral-400/40 dark:border-neutral-400",
+        )}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*,video/*"
+          className="hidden"
+          onChange={(e) => onFilesSelected(e.target.files)}
+        />
+
+        {items.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto px-4 pt-3">
+            {items.map((item) => (
+              <AttachmentChip
+                key={item.localId}
+                item={item}
+                onRemove={() => removeItem(item.localId)}
+                onRetry={
+                  item.status === "failed"
+                    ? () => retryItem(item.localId)
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        )}
+
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Assign a task or ask anything..."
-          className="min-h-[78px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-[15px] leading-6 text-foreground placeholder:text-muted-foreground focus:outline-none"
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData.files ?? []);
+            if (files.length > 0) {
+              e.preventDefault();
+              addFiles(files);
+            }
+          }}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="min-h-[78px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-[15px] leading-6 text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
           rows={2}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              handleSubmit(e);
+              void handleSubmit(e);
             }
           }}
           onInput={(e) => {
@@ -49,7 +172,14 @@ export function Composer() {
             <Tooltip>
               <TooltipTrigger
                 type="button"
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                disabled={
+                  disabled ||
+                  busy ||
+                  items.length >= MAX_ATTACHMENTS_PER_MESSAGE ||
+                  (!chatId && !ensureChatId)
+                }
+                onClick={openFilePicker}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer disabled:pointer-events-none disabled:opacity-40"
               >
                 <Paperclip className="h-4 w-4" />
               </TooltipTrigger>
@@ -84,11 +214,11 @@ export function Composer() {
               </TooltipContent>
             </Tooltip>
 
-            {isTyping ? (
+            {isStreaming ? (
               <Tooltip>
                 <TooltipTrigger
                   type="button"
-                  onClick={() => setIsTyping(false)}
+                  onClick={() => onStop?.()}
                   className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background transition-all hover:opacity-85 cursor-pointer"
                 >
                   <StopCircle className="h-4 w-4" />
@@ -101,9 +231,9 @@ export function Composer() {
               <Tooltip>
                 <TooltipTrigger
                   type="submit"
-                  disabled={!input.trim()}
+                  disabled={!canSend}
                   className={`flex h-7 w-7 items-center justify-center rounded-full transition-all ${
-                    input.trim()
+                    canSend
                       ? "bg-foreground text-background hover:opacity-85 cursor-pointer"
                       : "text-neutral-300 dark:text-neutral-600 cursor-not-allowed bg-transparent"
                   }`}
