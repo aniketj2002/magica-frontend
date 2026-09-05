@@ -56,9 +56,13 @@ export function ToolCallCard({
   const { label, Icon } = getToolMeta(name);
   const summary = summarizeToolInput(name, input);
 
-  const isError = Boolean(result?.isError);
+  const isError =
+    Boolean(result?.isError) ||
+    status === "FAILED" ||
+    status === "CANCELLED" ||
+    status === "CANCELED";
   const isDone = result !== undefined && !isError;
-  const isRunning = result === undefined;
+  const isRunning = result === undefined && !isError;
   const awaitingApproval =
     isRunning && status === "AWAITING_APPROVAL" && Boolean(agentRunId);
   const waiting =
@@ -201,7 +205,12 @@ export function ToolCallCard({
 
       {isError && (
         <div className="border-t border-red-200/60 px-3.5 py-2.5 text-xs text-red-700 dark:border-red-500/20 dark:text-red-300">
-          {errorMessage(result?.content)}
+          {errorMessage(
+            result?.content ??
+              (status === "CANCELLED" || status === "CANCELED"
+                ? { message: "Run cancelled" }
+                : { message: "Tool failed" }),
+          )}
         </div>
       )}
 

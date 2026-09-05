@@ -38,6 +38,19 @@ function textFromBlocks(blocks: ContentBlock[]): string {
     .join("");
 }
 
+/**
+ * Tool cards already render generated media. Strip markdown images and bare
+ * generated-asset URLs from assistant text so the model can't dump them twice.
+ */
+function stripRedundantMediaLinks(text: string): string {
+  return text
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "")
+    .replace(/https?:\/\/[^\s<>"')\]]+\/generated\/[^\s<>"')\]]+/gi, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function splitUserAttachmentText(text: string): {
   body: string;
   urls: string[];
@@ -107,7 +120,10 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
   );
 }
 
-function pairToolCalls(content: ContentBlock[]) {
+function pairToolCalls(
+  content: ContentBlock[],
+  opts?: { forceErrorForOpen?: { content: unknown } },
+) {
   type ToolUse = Extract<ContentBlock, { type: "tool_use" }>;
   type ToolResult = Extract<ContentBlock, { type: "tool_result" }>;
 
@@ -119,12 +135,21 @@ function pairToolCalls(content: ContentBlock[]) {
 
   return uses.map((use) => {
     const result = results.get(use.id);
-    return {
-      use,
-      result: result
-        ? { content: result.content, isError: result.isError }
-        : undefined,
-    };
+    if (result) {
+      return {
+        use,
+        result: { content: result.content, isError: result.isError },
+      };
+    }
+    // Interrupted/failed messages must not keep a perpetual "Generating…" card
+    // for tool_use blocks that never got a tool_result.
+    if (opts?.forceErrorForOpen) {
+      return {
+        use,
+        result: { content: opts.forceErrorForOpen.content, isError: true },
+      };
+    }
+    return { use, result: undefined };
   });
 }
 
@@ -168,9 +193,20 @@ export function Message({
   const thinking = content.filter(
     (b): b is Extract<ContentBlock, { type: "thinking" }> => b.type === "thinking",
   );
-  const toolPairs = pairToolCalls(content);
-  const text = textFromBlocks(content);
   const failed = status === "FAILED" || status === "CANCELLED";
+  const toolPairs = pairToolCalls(content, {
+    forceErrorForOpen: failed
+      ? {
+          content: {
+            error: status === "CANCELLED" ? "cancelled" : "failed",
+            message:
+              status === "CANCELLED" ? "Run cancelled" : "Run failed",
+          },
+        }
+      : undefined,
+  });
+  const rawText = textFromBlocks(content);
+  const text = isUser ? rawText : stripRedundantMediaLinks(rawText);
   const outOfCredits = errorCode === "insufficient_credits";
   const time = formatTime(createdAt);
 

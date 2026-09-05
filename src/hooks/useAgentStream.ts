@@ -112,7 +112,7 @@ function foldParts(parts: AgentStreamPart[] | undefined): FoldedStream {
         if (existing) {
           existing.ok = part.ok;
           existing.output = part.output;
-          if (part.ok) existing.status = "COMPLETED";
+          existing.status = part.ok ? "COMPLETED" : "FAILED";
         } else {
           toolById.set(part.id, {
             id: part.id,
@@ -120,7 +120,7 @@ function foldParts(parts: AgentStreamPart[] | undefined): FoldedStream {
             argumentsJson: "",
             ok: part.ok,
             output: part.output,
-            status: part.ok ? "COMPLETED" : undefined,
+            status: part.ok ? "COMPLETED" : "FAILED",
           });
         }
         break;
@@ -173,7 +173,11 @@ function foldParts(parts: AgentStreamPart[] | undefined): FoldedStream {
       blocks.push({
         type: "tool_result",
         toolUseId: tool.id,
-        content: tool.output ?? (tool.ok ? "ok" : "error"),
+        content:
+          tool.output ??
+          (tool.ok
+            ? "ok"
+            : { error: "tool_execution_error", message: "Tool failed" }),
         isError: !tool.ok,
       });
     }

@@ -46,10 +46,17 @@ export function MessageList({
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Hide the live overlay once this run is already in the message list
+  // (STREAMING or COMPLETED). Otherwise a late refetch can show the same
+  // assistant output twice — once from DB, once from the stream buffer.
   const showStreaming =
     streaming?.active &&
-    // Avoid duplicating a STREAMING assistant already in the list once checkpointed.
-    !messages.some((m) => m.role === "ASSISTANT" && m.status === "STREAMING");
+    !messages.some(
+      (m) =>
+        m.role === "ASSISTANT" &&
+        (m.status === "STREAMING" ||
+          (streamingAgentRunId != null && m.agentRunId === streamingAgentRunId)),
+    );
 
   // Auto-scroll to bottom when new messages arrive or streaming updates
   useEffect(() => {

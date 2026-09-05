@@ -20,6 +20,34 @@ function titleFromText(text: string): string {
   return `${trimmed.slice(0, 57)}…`;
 }
 
+function pendingChatStorageKey(userId: string) {
+  return `magica:pendingNewChatId:${userId}`;
+}
+
+function readPendingChatId(userId: string): string | null {
+  try {
+    return sessionStorage.getItem(pendingChatStorageKey(userId));
+  } catch {
+    return null;
+  }
+}
+
+function writePendingChatId(userId: string, chatId: string) {
+  try {
+    sessionStorage.setItem(pendingChatStorageKey(userId), chatId);
+  } catch {
+    // Ignore quota / private-mode failures — in-memory ref still works.
+  }
+}
+
+function clearPendingChatId(userId: string) {
+  try {
+    sessionStorage.removeItem(pendingChatStorageKey(userId));
+  } catch {
+    // ignore
+  }
+}
+
 export function ChatShell() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
@@ -30,14 +58,36 @@ export function ChatShell() {
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const pendingChatIdRef = useRef<string | null>(null);
+  /** Dedupes concurrent ensureChatId callers (e.g. multi-file drop). */
+  const pendingCreateRef = useRef<Promise<string> | null>(null);
 
   const ensureChatId = useCallback(async () => {
     if (pendingChatIdRef.current) return pendingChatIdRef.current;
     if (!user) throw new Error("Sign in to start a chat.");
-    const chat = await api.createChat({});
-    pendingChatIdRef.current = chat.id;
-    return chat.id;
-  }, [api, user]);
+
+    const stored = readPendingChatId(user.id);
+    if (stored) {
+      pendingChatIdRef.current = stored;
+      return stored;
+    }
+
+    if (!pendingCreateRef.current) {
+      pendingCreateRef.current = api
+        .createChat({})
+        .then((chat) => {
+          pendingChatIdRef.current = chat.id;
+          writePendingChatId(user.id, chat.id);
+          void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+          return chat.id;
+        })
+        .catch((err) => {
+          pendingCreateRef.current = null;
+          throw err;
+        });
+    }
+
+    return pendingCreateRef.current;
+  }, [api, queryClient, user]);
 
   const handleSend = async (text: string, attachmentIds: string[]) => {
     if (!user) {
@@ -48,12 +98,16 @@ export function ChatShell() {
     setStarting(true);
     try {
       const title = titleFromText(text);
-      let chatId = pendingChatIdRef.current;
-      if (!chatId) {
-        const chat = await api.createChat({ title });
-        chatId = chat.id;
+
+      // Prefer in-memory, then any in-flight ensure, then sessionStorage —
+      // never create a second chat if one is already pending for uploads.
+      let chatId =
+        pendingChatIdRef.current ??
+        (pendingCreateRef.current ? await pendingCreateRef.current : null) ??
+        readPendingChatId(user.id);
+
+      if (chatId) {
         pendingChatIdRef.current = chatId;
-      } else {
         // Chat was created early for attachment upload (untitled) — backfill now.
         void api
           .updateChat(chatId, { title })
@@ -61,7 +115,14 @@ export function ChatShell() {
             queryClient.invalidateQueries({ queryKey: chatKeys.all }),
           )
           .catch(() => undefined);
+      } else {
+        const chat = await api.createChat({ title });
+        chatId = chat.id;
+        pendingChatIdRef.current = chatId;
       }
+
+      clearPendingChatId(user.id);
+      pendingCreateRef.current = null;
 
       // Optimistically populate the chat with the user's message
       const optimisticMessage = {

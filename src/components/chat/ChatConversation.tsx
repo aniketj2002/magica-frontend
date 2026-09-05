@@ -104,10 +104,13 @@ export function ChatConversation({ chatId }: { chatId: string }) {
   const isStreaming =
     stream.isStreaming || runActive || sendMessage.isPending;
 
-  const streamingBuffer =
-    stream.isStreaming || (Boolean(activeRun) && stream.contentBlocks.length > 0)
-      ? { content: stream.contentBlocks, active: true }
-      : null;
+  // Only while the Trigger stream is live. Keeping the buffer after
+  // `activeRun` alone caused a duplicate assistant bubble once the
+  // checkpointed message flipped to COMPLETED but the stream hadn't
+  // finished clearing yet.
+  const streamingBuffer = stream.isStreaming
+    ? { content: stream.contentBlocks, active: true }
+    : null;
 
   const handleSend = async (text: string, attachmentIds: string[]) => {
     try {
