@@ -146,6 +146,7 @@ export function ChatConversation({ chatId }: { chatId: string }) {
           onLoadOlder={() => void messagesQuery.fetchNextPage()}
           errorCodeByRunId={errorCodeByRunId}
           streamingErrorCode={stream.error?.code}
+          streamingAgentRunId={agentRunId}
         />
       )}
 

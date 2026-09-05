@@ -27,6 +27,7 @@ interface MessageProps {
   streaming?: boolean;
   createdAt?: string | null;
   errorCode?: string | null;
+  agentRunId?: string | null;
   onRetry?: () => void;
 }
 
@@ -158,6 +159,7 @@ export function Message({
   streaming = false,
   createdAt,
   errorCode,
+  agentRunId,
   onRetry,
 }: MessageProps) {
   const isUser = role === "user";
@@ -264,9 +266,12 @@ export function Message({
             {toolPairs.map(({ use, result }) => (
               <ToolCallCard
                 key={use.id}
+                toolCallId={use.id}
                 name={use.name}
                 input={use.input}
                 status={use.status}
+                credits={use.credits}
+                agentRunId={agentRunId}
                 result={result}
               />
             ))}

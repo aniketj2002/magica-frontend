@@ -13,6 +13,7 @@ export type StreamToolCall = {
   argumentsJson: string;
   ok?: boolean;
   status?: string;
+  credits?: number;
   output?: unknown;
 };
 
@@ -89,6 +90,23 @@ function foldParts(parts: AgentStreamPart[] | undefined): FoldedStream {
         }
         break;
       }
+      case "tool-approval-required": {
+        const existing = toolById.get(part.id);
+        if (existing) {
+          existing.status = "AWAITING_APPROVAL";
+          existing.credits = part.credits;
+          if (!existing.name) existing.name = part.name;
+        } else {
+          toolById.set(part.id, {
+            id: part.id,
+            name: part.name,
+            argumentsJson: "",
+            status: "AWAITING_APPROVAL",
+            credits: part.credits,
+          });
+        }
+        break;
+      }
       case "tool-result": {
         const existing = toolById.get(part.id);
         if (existing) {
@@ -149,6 +167,7 @@ function foldParts(parts: AgentStreamPart[] | undefined): FoldedStream {
       name: tool.name,
       input,
       ...(tool.status ? { status: tool.status } : {}),
+      ...(tool.credits !== undefined ? { credits: tool.credits } : {}),
     });
     if (tool.ok !== undefined) {
       blocks.push({
@@ -185,7 +204,7 @@ export function useAgentStream(opts: {
     "agent",
     {
       accessToken: publicAccessToken ?? "",
-      timeoutInSeconds: 600,
+      timeoutInSeconds: 3900,
       throttleInMs: 50,
       enabled,
     },

@@ -203,6 +203,37 @@ export function useCancelRun() {
   });
 }
 
+export function useApproveToolCall() {
+  const api = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { agentRunId: string; toolCallId: string }) =>
+      api.approveToolCall(input.agentRunId, input.toolCallId),
+    onSuccess: (_result, input) => {
+      void queryClient.invalidateQueries({
+        queryKey: runKeys.detail(input.agentRunId),
+      });
+      void queryClient.invalidateQueries({ queryKey: creditKeys.balance });
+    },
+  });
+}
+
+export function useRejectToolCall() {
+  const api = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { agentRunId: string; toolCallId: string }) =>
+      api.rejectToolCall(input.agentRunId, input.toolCallId),
+    onSuccess: (_result, input) => {
+      void queryClient.invalidateQueries({
+        queryKey: runKeys.detail(input.agentRunId),
+      });
+    },
+  });
+}
+
 /* ── Credits ── */
 
 export const creditKeys = {

@@ -33,6 +33,7 @@ export function MessageList({
   onLoadOlder,
   errorCodeByRunId,
   streamingErrorCode,
+  streamingAgentRunId,
 }: {
   messages: ApiMessage[];
   streaming?: StreamingBuffer;
@@ -41,6 +42,7 @@ export function MessageList({
   onLoadOlder?: () => void;
   errorCodeByRunId?: Record<string, string | null | undefined>;
   streamingErrorCode?: string | null;
+  streamingAgentRunId?: string | null;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -78,6 +80,7 @@ export function MessageList({
             status={message.status}
             streaming={message.status === "STREAMING"}
             createdAt={message.createdAt}
+            agentRunId={message.agentRunId}
             errorCode={
               message.agentRunId
                 ? (errorCodeByRunId?.[message.agentRunId] ?? null)
@@ -92,6 +95,7 @@ export function MessageList({
             content={streaming!.content}
             status="STREAMING"
             streaming
+            agentRunId={streamingAgentRunId}
             errorCode={streamingErrorCode}
           />
         )}

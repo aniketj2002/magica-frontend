@@ -23,7 +23,7 @@ export type FinishReason = "stop" | "length" | "tool_calls" | "content_filter";
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
-  | { type: "tool_use"; id: string; name: string; input: unknown; status?: string }
+  | { type: "tool_use"; id: string; name: string; input: unknown; status?: string; credits?: number }
   | { type: "tool_result"; toolUseId: string; content: unknown; isError?: boolean }
   | {
       type: "usage";
@@ -102,6 +102,12 @@ export type AgentStreamPart =
   | { type: "tool-call"; id: string; name: string; argumentsJson: string }
   | { type: "tool-result"; id: string; name: string; ok: boolean; output?: unknown }
   | { type: "tool-progress"; id: string; name: string; status: string }
+  | {
+      type: "tool-approval-required";
+      id: string;
+      name: string;
+      credits: number;
+    }
   | {
       type: "usage";
       promptTokens: number;

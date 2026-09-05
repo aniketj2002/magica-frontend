@@ -122,6 +122,24 @@ export function createApi(getToken: TokenProvider) {
       );
     },
 
+    approveToolCall(agentRunId: string, toolCallId: string) {
+      return withToken(getToken).then((token) =>
+        apiFetch<{ approved: boolean; toolCallId: string }>(
+          `/runs/${agentRunId}/tool-calls/${encodeURIComponent(toolCallId)}/approve`,
+          { method: "POST", token },
+        ),
+      );
+    },
+
+    rejectToolCall(agentRunId: string, toolCallId: string) {
+      return withToken(getToken).then((token) =>
+        apiFetch<{ approved: boolean; toolCallId: string }>(
+          `/runs/${agentRunId}/tool-calls/${encodeURIComponent(toolCallId)}/reject`,
+          { method: "POST", token },
+        ),
+      );
+    },
+
     getBalance() {
       return withToken(getToken).then((token) =>
         apiFetch<CreditBalance>("/credits", { token }),
