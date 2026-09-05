@@ -56,7 +56,8 @@ function formatCredits(balance: number): string {
 }
 
 function CreditBalanceDisplay() {
-  const { data, isLoading } = useBalance();
+  const { user, isLoaded } = useUser();
+  const { data, isLoading } = useBalance(Boolean(isLoaded && user));
 
   return (
     <Link

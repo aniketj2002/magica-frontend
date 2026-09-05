@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
 import {
   ArrowLeft,
   Coins,
@@ -17,6 +18,7 @@ import { useCreditUsage, useBalance } from "@/hooks/queries";
 import type { CreditUsageItem, CreditUsageShow } from "@/lib/api/types";
 import { toolLabel } from "@/lib/tools/registry";
 import { UsageDetailsDialog } from "@/components/chat/UsageDetailsDialog";
+import { AuthCheckpoint } from "./AuthCheckpoint";
 
 function formatCredits(amount: number): string {
   if (Math.abs(amount) >= 1_000_000) {
@@ -82,6 +84,11 @@ function periodRange(period: PeriodKey): { from?: string; to?: string } {
 }
 
 export function CreditUsagePage() {
+  const { user, isLoaded } = useUser();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const signedIn = Boolean(mounted && isLoaded && user);
+
   const [activeTab, setActiveTab] = useState<"overview" | "detailed">(
     "overview",
   );
@@ -97,8 +104,9 @@ export function CreditUsagePage() {
   const { data, isLoading, isError, error } = useCreditUsage({
     ...range,
     show,
+    enabled: signedIn,
   });
-  const { data: balanceData } = useBalance();
+  const { data: balanceData } = useBalance(signedIn);
 
   const items = useMemo(() => {
     if (!data?.items) return [];
@@ -173,6 +181,15 @@ export function CreditUsagePage() {
     SHOW_OPTIONS.find((o) => o.key === show)?.label ?? "Debited Credits";
   const periodOptionLabel =
     PERIOD_OPTIONS.find((o) => o.key === period)?.label ?? "Current Period";
+
+  if (mounted && isLoaded && !user) {
+    return (
+      <AuthCheckpoint
+        title="Credits"
+        description="Sign in to view your credit balance and usage history."
+      />
+    );
+  }
 
   return (
     <div className="flex flex-1 h-full w-full flex-col overflow-y-auto hide-scrollbar">

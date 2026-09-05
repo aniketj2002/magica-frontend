@@ -90,10 +90,7 @@ export function ChatShell() {
   }, [api, queryClient, user]);
 
   const handleSend = async (text: string, attachmentIds: string[]) => {
-    if (!user) {
-      setError("Sign in to start a chat.");
-      return;
-    }
+    if (!user) return;
     setError(null);
     setStarting(true);
     try {

@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import { useChats } from "@/hooks/queries";
 import { cn } from "@/lib/utils";
 
 export function ChatList() {
   const pathname = usePathname();
+  const { user, isLoaded } = useUser();
   const { data, isLoading, isError, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    useChats(true);
+    useChats(Boolean(isLoaded && user));
 
   const chats = data?.pages.flatMap((p) => p.items) ?? [];
 
