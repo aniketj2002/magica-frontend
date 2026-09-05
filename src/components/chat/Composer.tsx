@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth, useClerk } from "@clerk/nextjs";
 import { useRef, useState } from "react";
 import { Paperclip, Plug, ArrowUp, Mic, StopCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -8,6 +9,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   useAttachmentUpload,
 } from "@/hooks/useAttachmentUpload";
+import { blockForSignIn } from "@/lib/authGate";
 import { cn } from "@/lib/utils";
 
 export type ComposerProps = {
@@ -47,8 +49,22 @@ export function Composer({
     allReady,
     readyIds,
   } = useAttachmentUpload({ chatId, ensureChatId });
+  const { isSignedIn } = useAuth();
+  const clerk = useClerk();
+
+  const requireSignIn = (): boolean =>
+    blockForSignIn({
+      isSignedIn: Boolean(isSignedIn),
+      openSignIn: () => clerk.openSignIn({}),
+    });
 
   const busy = isStreaming || sending;
+  const canAttachInfrastructure = Boolean(chatId || ensureChatId);
+  const attachDisabled =
+    disabled ||
+    busy ||
+    items.length >= MAX_ATTACHMENTS_PER_MESSAGE ||
+    (Boolean(isSignedIn) && !canAttachInfrastructure);
   const canSend =
     Boolean(input.trim()) &&
     !busy &&
@@ -60,6 +76,7 @@ export function Composer({
     e.preventDefault();
     const text = input.trim();
     if (!text || busy || disabled || !allReady || isSettling) return;
+    if (requireSignIn()) return;
     const attachmentIds = [...readyIds];
     setSending(true);
     setInput("");
@@ -71,14 +88,20 @@ export function Composer({
     }
   };
 
+  const tryAddFiles = (files: FileList | File[]) => {
+    if (requireSignIn()) return;
+    addFiles(files);
+  };
+
   const openFilePicker = () => {
     if (disabled || busy) return;
+    if (requireSignIn()) return;
     fileInputRef.current?.click();
   };
 
   const onFilesSelected = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    addFiles(files);
+    tryAddFiles(files);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -108,7 +131,7 @@ export function Composer({
           dragDepth.current = 0;
           setDragging(false);
           if (disabled || busy) return;
-          if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+          if (e.dataTransfer.files?.length) tryAddFiles(e.dataTransfer.files);
         }}
         className={cn(
           "relative flex w-full flex-col overflow-hidden rounded-3xl border border-neutral-300 dark:border-neutral-700 bg-card shadow-sm transition-all focus-within:shadow-md focus-within:border-neutral-400 dark:focus-within:border-neutral-500",
@@ -148,7 +171,7 @@ export function Composer({
             const files = Array.from(e.clipboardData.files ?? []);
             if (files.length > 0) {
               e.preventDefault();
-              addFiles(files);
+              tryAddFiles(files);
             }
           }}
           placeholder={placeholder}
@@ -172,12 +195,7 @@ export function Composer({
             <Tooltip>
               <TooltipTrigger
                 type="button"
-                disabled={
-                  disabled ||
-                  busy ||
-                  items.length >= MAX_ATTACHMENTS_PER_MESSAGE ||
-                  (!chatId && !ensureChatId)
-                }
+                disabled={attachDisabled}
                 onClick={openFilePicker}
                 className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer disabled:pointer-events-none disabled:opacity-40"
               >
