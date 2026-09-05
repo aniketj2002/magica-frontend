@@ -56,22 +56,22 @@ export function useCreateChat() {
   });
 }
 
-export function useChat(chatId: string | undefined) {
+export function useChat(chatId: string | undefined, enabled = true) {
   const api = useApiClient();
 
   return useQuery({
     queryKey: chatKeys.detail(chatId ?? ""),
-    enabled: Boolean(chatId),
+    enabled: Boolean(chatId) && enabled,
     queryFn: () => api.getChat(chatId!),
   });
 }
 
-export function useMessages(chatId: string | undefined) {
+export function useMessages(chatId: string | undefined, enabled = true) {
   const api = useApiClient();
 
   return useInfiniteQuery({
     queryKey: messageKeys.list(chatId ?? ""),
-    enabled: Boolean(chatId),
+    enabled: Boolean(chatId) && enabled,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
       api.listMessages(chatId!, { limit: 50, cursor: pageParam }),
@@ -256,12 +256,15 @@ export function useCreditUsage(opts?: {
   from?: string;
   to?: string;
   show?: CreditUsageShow;
+  enabled?: boolean;
 }) {
   const api = useApiClient();
+  const { enabled = true, ...queryOpts } = opts ?? {};
 
   return useQuery({
-    queryKey: creditKeys.usage(opts?.from, opts?.to, opts?.show),
-    queryFn: () => api.getCreditUsage(opts),
+    queryKey: creditKeys.usage(queryOpts.from, queryOpts.to, queryOpts.show),
+    enabled,
+    queryFn: () => api.getCreditUsage(queryOpts),
     staleTime: 60_000,
   });
 }

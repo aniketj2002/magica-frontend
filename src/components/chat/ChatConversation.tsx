@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useUser } from "@clerk/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
+import { AuthCheckpoint } from "./AuthCheckpoint";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { OutOfCreditsCard } from "./Message";
 import { useModelSelection } from "./ModelContext";
 import {
+  creditKeys,
   flattenMessagesChronological,
+  messageKeys,
+  runKeys,
   useCancelRun,
   useMessages,
   useRun,
@@ -19,13 +25,20 @@ import { TERMINAL_RUN_STATUSES } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 
 export function ChatConversation({ chatId }: { chatId: string }) {
+  const { user, isLoaded } = useUser();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const signedIn = Boolean(mounted && isLoaded && user);
+
   const { apiModelId } = useModelSelection();
+  const queryClient = useQueryClient();
   const activeRun = useActiveRunStore((s) => s.byChatId[chatId]);
   const setActiveRun = useActiveRunStore((s) => s.setActiveRun);
-  const messagesQuery = useMessages(chatId);
+  const clearActiveRun = useActiveRunStore((s) => s.clearActiveRun);
+  const messagesQuery = useMessages(chatId, signedIn);
   const sendMessage = useSendMessage(chatId);
   const cancelRun = useCancelRun();
-
+  const reconciledTerminalRunRef = useRef<string | null>(null);
   const messages = useMemo(
     () => flattenMessagesChronological(messagesQuery.data?.pages),
     [messagesQuery.data?.pages],
@@ -58,8 +71,10 @@ export function ChatConversation({ chatId }: { chatId: string }) {
     return undefined;
   }, [messages]);
 
-  const agentRunId = activeRun?.agentRunId ?? streamingMessageRunId;
-  const runQuery = useRun(agentRunId ?? latestFailedRunId);
+  const agentRunId = signedIn
+    ? (activeRun?.agentRunId ?? streamingMessageRunId)
+    : undefined;
+  const runQuery = useRun(signedIn ? (agentRunId ?? latestFailedRunId) : undefined);
 
   // Reattach Trigger Realtime after refresh: GET /runs/:id returns a fresh token.
   useEffect(() => {
@@ -97,10 +112,39 @@ export function ChatConversation({ chatId }: { chatId: string }) {
   });
 
   const runStatus = runQuery.data?.status;
+
+  // Stream `finish` can be missed after Magica waitpoint resume / socket drops.
+  // Run metadata (or GET /runs) is still authoritative — reconcile messages so
+  // we don't leave a cached STREAMING bubble stuck on "Generating…".
+  useEffect(() => {
+    if (!agentRunId || !runStatus) return;
+    if (!TERMINAL_RUN_STATUSES.has(runStatus)) return;
+    const tracking =
+      activeRun?.agentRunId === agentRunId ||
+      streamingMessageRunId === agentRunId;
+    if (!tracking) return;
+    if (reconciledTerminalRunRef.current === agentRunId) return;
+    reconciledTerminalRunRef.current = agentRunId;
+
+    clearActiveRun(chatId);
+    void queryClient.invalidateQueries({ queryKey: messageKeys.list(chatId) });
+    void queryClient.invalidateQueries({ queryKey: creditKeys.balance });
+    void queryClient.invalidateQueries({
+      queryKey: runKeys.detail(agentRunId),
+    });
+  }, [
+    agentRunId,
+    runStatus,
+    activeRun?.agentRunId,
+    streamingMessageRunId,
+    chatId,
+    clearActiveRun,
+    queryClient,
+  ]);
+
   const runActive =
     Boolean(agentRunId) &&
     (!runStatus || !TERMINAL_RUN_STATUSES.has(runStatus));
-
   const isStreaming =
     stream.isStreaming || runActive || sendMessage.isPending;
 
@@ -147,6 +191,15 @@ export function ChatConversation({ chatId }: { chatId: string }) {
     if (!runId || !code) return undefined;
     return { [runId]: code };
   }, [runQuery.data?.errorCode, runQuery.data?.id, agentRunId, latestFailedRunId]);
+
+  if (mounted && isLoaded && !user) {
+    return (
+      <AuthCheckpoint
+        title="Chat"
+        description="Sign in to view this conversation and continue your AI worker tasks."
+      />
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
