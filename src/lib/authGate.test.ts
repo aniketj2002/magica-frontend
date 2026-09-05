@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { blockForSignIn } from "./authGate.ts";
+import { blockForSignIn } from "./authGate";
 
 describe("blockForSignIn", () => {
   it("returns false and does not open when signed in", () => {

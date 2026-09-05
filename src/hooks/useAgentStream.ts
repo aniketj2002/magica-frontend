@@ -217,6 +217,24 @@ export function useAgentStream(opts: {
 
   const folded = useMemo(() => foldParts(parts), [parts]);
 
+  const approvalInvalidateKey = useMemo(() => {
+    const awaiting = folded.toolCalls.find(
+      (t) => t.status === "AWAITING_APPROVAL",
+    );
+    return awaiting ? `${awaiting.id}:${awaiting.credits ?? ""}` : null;
+  }, [folded.toolCalls]);
+
+  const approvalInvalidatedRef = useRef<string | null>(null);
+
+  // Persist approval UI via message refetch — stream overlay is hidden once the
+  // STREAMING assistant row exists, so reopen/live both need DB tool_use.status.
+  useEffect(() => {
+    if (!approvalInvalidateKey) return;
+    if (approvalInvalidatedRef.current === approvalInvalidateKey) return;
+    approvalInvalidatedRef.current = approvalInvalidateKey;
+    void queryClient.invalidateQueries({ queryKey: messageKeys.list(chatId) });
+  }, [approvalInvalidateKey, chatId, queryClient]);
+
   useEffect(() => {
     if (!folded.finished && !folded.error && !error) return;
     const key = agentRunId ?? triggerRunId ?? null;
