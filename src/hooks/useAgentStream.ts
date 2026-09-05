@@ -204,7 +204,8 @@ export function useAgentStream(opts: {
     "agent",
     {
       accessToken: publicAccessToken ?? "",
-      timeoutInSeconds: 3900,
+      // Trigger realtime API rejects timeout-seconds >= 600
+      timeoutInSeconds: 599,
       throttleInMs: 50,
       enabled,
     },

@@ -73,6 +73,12 @@ export type AgentRun = {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Present for non-terminal runs so the client can (re)attach Trigger Realtime. */
+  realtime?: {
+    runId: string;
+    streamId: string;
+    publicAccessToken: string;
+  };
 };
 
 export type Page<T> = {

@@ -1,28 +1,27 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { OutOfCreditsCard } from "./Message";
 import { useModelSelection } from "./ModelContext";
 import {
   flattenMessagesChronological,
-  messageKeys,
   useCancelRun,
   useMessages,
   useRun,
   useSendMessage,
 } from "@/hooks/queries";
 import { useAgentStream } from "@/hooks/useAgentStream";
+import { useSyncRunFromRealtime } from "@/hooks/useSyncRunFromRealtime";
 import { useActiveRunStore } from "@/store/activeRun";
 import { TERMINAL_RUN_STATUSES } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 
 export function ChatConversation({ chatId }: { chatId: string }) {
-  const queryClient = useQueryClient();
   const { apiModelId } = useModelSelection();
   const activeRun = useActiveRunStore((s) => s.byChatId[chatId]);
+  const setActiveRun = useActiveRunStore((s) => s.setActiveRun);
   const messagesQuery = useMessages(chatId);
   const sendMessage = useSendMessage(chatId);
   const cancelRun = useCancelRun();
@@ -62,10 +61,38 @@ export function ChatConversation({ chatId }: { chatId: string }) {
   const agentRunId = activeRun?.agentRunId ?? streamingMessageRunId;
   const runQuery = useRun(agentRunId ?? latestFailedRunId);
 
+  // Reattach Trigger Realtime after refresh: GET /runs/:id returns a fresh token.
+  useEffect(() => {
+    const run = runQuery.data;
+    const realtime = run?.realtime;
+    if (!run || !realtime) return;
+    if (TERMINAL_RUN_STATUSES.has(run.status)) return;
+    if (
+      activeRun?.publicAccessToken === realtime.publicAccessToken &&
+      activeRun?.triggerRunId === realtime.runId
+    ) {
+      return;
+    }
+    setActiveRun(chatId, {
+      agentRunId: run.id,
+      triggerRunId: realtime.runId,
+      publicAccessToken: realtime.publicAccessToken,
+    });
+  }, [runQuery.data, activeRun, chatId, setActiveRun]);
+
+  const triggerRunId = activeRun?.triggerRunId ?? runQuery.data?.triggerRunId ?? undefined;
+  const publicAccessToken = activeRun?.publicAccessToken;
+
+  useSyncRunFromRealtime({
+    agentRunId,
+    triggerRunId,
+    publicAccessToken,
+  });
+
   const stream = useAgentStream({
     chatId,
-    triggerRunId: activeRun?.triggerRunId,
-    publicAccessToken: activeRun?.publicAccessToken,
+    triggerRunId,
+    publicAccessToken,
     agentRunId,
   });
 
@@ -73,15 +100,6 @@ export function ChatConversation({ chatId }: { chatId: string }) {
   const runActive =
     Boolean(agentRunId) &&
     (!runStatus || !TERMINAL_RUN_STATUSES.has(runStatus));
-
-  // While a run is active without a live realtime token, poll checkpointed messages.
-  useEffect(() => {
-    if (!runActive || activeRun?.publicAccessToken) return;
-    const id = window.setInterval(() => {
-      void queryClient.invalidateQueries({ queryKey: messageKeys.list(chatId) });
-    }, 2000);
-    return () => window.clearInterval(id);
-  }, [runActive, activeRun?.publicAccessToken, chatId, queryClient]);
 
   const isStreaming =
     stream.isStreaming || runActive || sendMessage.isPending;

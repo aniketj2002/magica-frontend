@@ -3,6 +3,7 @@
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { WelcomeScreen } from "./WelcomeScreen";
 import { Composer } from "./Composer";
 import { CategoryTabs } from "./CategoryTabs";
@@ -11,6 +12,7 @@ import { useModelSelection } from "./ModelContext";
 import { useApiClient } from "@/hooks/useApiClient";
 import { useActiveRunStore } from "@/store/activeRun";
 import { ApiError } from "@/lib/api/client";
+import { chatKeys, messageKeys } from "@/hooks/queries";
 
 function titleFromText(text: string): string {
   const trimmed = text.trim().replace(/\s+/g, " ");
@@ -22,6 +24,7 @@ export function ChatShell() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
   const api = useApiClient();
+  const queryClient = useQueryClient();
   const { apiModelId } = useModelSelection();
   const setActiveRun = useActiveRunStore((s) => s.setActiveRun);
   const [error, setError] = useState<string | null>(null);
@@ -44,29 +47,66 @@ export function ChatShell() {
     setError(null);
     setStarting(true);
     try {
+      const title = titleFromText(text);
       let chatId = pendingChatIdRef.current;
       if (!chatId) {
-        const chat = await api.createChat({ title: titleFromText(text) });
+        const chat = await api.createChat({ title });
         chatId = chat.id;
         pendingChatIdRef.current = chatId;
+      } else {
+        // Chat was created early for attachment upload (untitled) — backfill now.
+        void api
+          .updateChat(chatId, { title })
+          .then(() =>
+            queryClient.invalidateQueries({ queryKey: chatKeys.all }),
+          )
+          .catch(() => undefined);
       }
 
-      const result = await api.sendMessage(
+      // Optimistically populate the chat with the user's message
+      const optimisticMessage = {
+        id: `optimistic-${crypto.randomUUID()}`,
+        chatId,
+        userId: "me",
+        agentRunId: null,
+        role: "USER" as const,
+        status: "COMPLETED" as const,
+        content: [{ type: "text" as const, text }],
+        metadata: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      queryClient.setQueryData(messageKeys.list(chatId), {
+        pages: [{ items: [optimisticMessage], nextCursor: null }],
+        pageParams: [null],
+      });
+
+      // Navigate immediately
+      router.push(`/chat/c/${chatId}`);
+
+      // Fire the message request in the background
+      api.sendMessage(
         chatId,
         {
           text,
           modelId: apiModelId,
-          attachmentIds:
-            attachmentIds.length > 0 ? attachmentIds : undefined,
+          attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
         },
-        { idempotencyKey: crypto.randomUUID() },
-      );
-      setActiveRun(chatId, {
-        agentRunId: result.runId,
-        triggerRunId: result.realtime.runId,
-        publicAccessToken: result.realtime.publicAccessToken,
+        { idempotencyKey: crypto.randomUUID() }
+      ).then((result) => {
+        setActiveRun(chatId, {
+          agentRunId: result.runId,
+          triggerRunId: result.realtime.runId,
+          publicAccessToken: result.realtime.publicAccessToken,
+        });
+        void queryClient.invalidateQueries({ queryKey: messageKeys.list(chatId) });
+        void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+      }).catch((err) => {
+        console.error("Failed to send background message:", err);
+        // Optionally handle background error (e.g., toast notification)
       });
-      router.push(`/chat/c/${chatId}`);
+
     } catch (err) {
       const message =
         err instanceof ApiError
@@ -75,7 +115,6 @@ export function ChatShell() {
             ? err.message
             : "Failed to start chat";
       setError(message);
-    } finally {
       setStarting(false);
     }
   };

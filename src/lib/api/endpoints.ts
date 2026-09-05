@@ -49,6 +49,16 @@ export function createApi(getToken: TokenProvider) {
       );
     },
 
+    updateChat(chatId: string, body: { title: string }) {
+      return withToken(getToken).then((token) =>
+        apiFetch<Chat>(`/chats/${chatId}`, {
+          method: "PATCH",
+          token,
+          body,
+        }),
+      );
+    },
+
     listMessages(
       chatId: string,
       opts?: { limit?: number; cursor?: string | null },

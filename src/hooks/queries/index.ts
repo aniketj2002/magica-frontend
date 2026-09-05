@@ -8,11 +8,13 @@ import {
 } from "@tanstack/react-query";
 import { useApiClient } from "@/hooks/useApiClient";
 import {
-  TERMINAL_RUN_STATUSES,
   type CreditUsageShow,
   type Message,
 } from "@/lib/api/types";
 import { useActiveRunStore } from "@/store/activeRun";
+
+/** HTTP poll interval for GET /runs/:id. Trigger Realtime owns live status. */
+const RUN_STATUS_HTTP_REFETCH_INTERVAL_MS: false | number = false;
 
 export const chatKeys = {
   all: ["chats"] as const,
@@ -174,11 +176,8 @@ export function useRun(agentRunId: string | undefined) {
     queryKey: runKeys.detail(agentRunId ?? ""),
     enabled: Boolean(agentRunId),
     queryFn: () => api.getRun(agentRunId!),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (!status || TERMINAL_RUN_STATUSES.has(status)) return false;
-      return 2000;
-    },
+    // Status updates come from Trigger Realtime metadata (useSyncRunFromRealtime).
+    refetchInterval: RUN_STATUS_HTTP_REFETCH_INTERVAL_MS,
   });
 }
 
